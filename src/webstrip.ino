@@ -1,13 +1,13 @@
-#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
+#include "BufferedNeoPixelBus.h"
 #include "FS.h"
-#include <NeoPixelBus.h>
-#include <NeoPixelAnimator.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h> //https://github.com/esp8266/Arduino
+#include <ESP8266mDNS.h>
+#include <NeoPixelAnimator.h>
+#include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 
 #define MODE_JSON_FILE_PATH(INDEX) (String("modes/mode") + String(INDEX) + String(".json"))
 #define OPTIONS_JSON_FILE_PATH "options.json"
@@ -35,11 +35,12 @@
 #define JSON_FIELD_PIXEL_COUNT "pixelCount"
 #define JSON_FIELD_PORT "port"
 
-#define DEFAULT_COLORS {"#9400D3", "#4B0082", "#0000FF", "#00FF00", "#FFFF00", "#FF7F00", "#FF0000"}
+#define DEFAULT_COLORS                                                                                                                                         \
+  { "#9400D3", "#4B0082", "#0000FF", "#00FF00", "#FFFF00", "#FF7F00", "#FF0000" }
 #define DEFAULT_COLORS_COUNT 7
 #define DEFAULT_MODE_INDEX 0
 
-#define GENERATE_RANDOM_COLOR (HsbColor(((float) random(360)) / 360, 1, 0.5))
+#define GENERATE_RANDOM_COLOR (HsbColor(((float)random(360)) / 360, 1, 0.5))
 
 #define MAX_PIXEL_COUNT 255
 
@@ -56,11 +57,10 @@
 
 #define COLOR_SELECTION_MODE_COUNT 3
 
-typedef bool (* ErrorCallbackFunctionType) (char* errorMessage);
-typedef void (* StartAnimationFunctionType) ();
-typedef void (* EndAnimationFunctionType) ();
-typedef RgbColor (* RgbColorModificatorFunctionType) (RgbColor color, uint16_t ledIndex, float progress);
-typedef float (* AnimationProgressModifierFunctionType) (float progress);
+typedef bool (*ErrorCallbackFunctionType)(const char *errorMessage);
+typedef void (*StartAnimationFunctionType)();
+typedef void (*EndAnimationFunctionType)();
+typedef float (*AnimationProgressModifierFunctionType)(float progress);
 
 struct WebStripOptions {
   uint16_t pixelCount = 32;
@@ -70,7 +70,7 @@ struct WebStripOptions {
 
 struct LedStripAnimationMode {
   uint16_t id;
-  uint16_t duration; //in NEO_CENTISECONDS. Duration / 100 = seconds
+  uint16_t duration; // in NEO_CENTISECONDS. Duration / 100 = seconds
   StartAnimationFunctionType startFunction;
   EndAnimationFunctionType endFunction;
 };
@@ -89,20 +89,14 @@ const LedStripAnimationMode ANIMATION_MODE_FADE = {2, 200, startFadeAnimation, s
 const LedStripAnimationMode ANIMATION_MODE_RAND_PIXELS = {3, 10, startRandPixelsAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_FLASH_PIXELS = {4, 20, startFlashPixelsAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_SOLID_FADE_OUT_LOOP = {5, 500, startSolidFadeOutLoopAnimation, stopAllAnimations};
-const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE, 
-                                                      ANIMATION_MODE_SHIFT_RIGHT, 
-                                                      ANIMATION_MODE_FADE,
-                                                      ANIMATION_MODE_RAND_PIXELS,
-                                                      ANIMATION_MODE_FLASH_PIXELS,
-                                                      ANIMATION_MODE_SOLID_FADE_OUT_LOOP};
+const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE,        ANIMATION_MODE_SHIFT_RIGHT,  ANIMATION_MODE_FADE,
+                                                      ANIMATION_MODE_RAND_PIXELS, ANIMATION_MODE_FLASH_PIXELS, ANIMATION_MODE_SOLID_FADE_OUT_LOOP};
 
-const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_LINEAR = [](float progress) {return progress;};
+const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_LINEAR = [](float progress) { return progress; };
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_SIN_IN = NeoEase::SinusoidalIn;
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_SIN_OUT = NeoEase::SinusoidalOut;
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_SIN_IN_OUT = NeoEase::SinusoidalInOut;
-const AnimationProgressModifierFunctionType activeAnimationProgressModes[] = {ANIMATION_PROGRESS_LINEAR,
-                                                                              ANIMATION_PROGRESS_SIN_IN,
-                                                                              ANIMATION_PROGRESS_SIN_OUT,
+const AnimationProgressModifierFunctionType activeAnimationProgressModes[] = {ANIMATION_PROGRESS_LINEAR, ANIMATION_PROGRESS_SIN_IN, ANIMATION_PROGRESS_SIN_OUT,
                                                                               ANIMATION_PROGRESS_SIN_IN_OUT};
 
 struct LedColorAnimationState {
@@ -128,17 +122,16 @@ LedStripMode currentMode;
 bool otaMode = false;
 bool ledStripModeEditMode = true;
 
-//temp values can be used in animations
+// temp values can be used in animations
 RgbColor tempColor;
 uint16_t tempLedIndex = 0;
 
-//Initialized after reading saved options
+// Initialized after reading saved options
 ESP8266WebServer *server;
-NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> *strip;
+BufferedNeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> *strip;
 NeoPixelAnimator *animations;
 
 NeoGamma<NeoGammaEquationMethod> colorGamma;
-RgbColor stripColors[MAX_PIXEL_COUNT];
 LedColorAnimationState ledColorAnimationState[MAX_PIXEL_COUNT];
 
 const RgbColor BLACK(0);
@@ -146,25 +139,27 @@ const RgbColor YELLOW(255, 255, 0);
 const RgbColor GREEN(0, 255, 0);
 const RgbColor BLUE(0, 0, 255);
 
+JsonObject &loadJsonFromFS(DynamicJsonBuffer *jsonBuffer, String path, ErrorCallbackFunctionType errorCallback);
+
 void setup() {
-    Serial.begin(115200);
-    SetRandomSeed();
-    SPIFFS.begin();
-    if (!loadOptionsFromFS()) {
-      log("Cannot load options from file, using predefined values");
-    }
+  Serial.begin(115200);
+  SetRandomSeed();
+  SPIFFS.begin();
+  if (!loadOptionsFromFS()) {
+    log("Cannot load options from file, using predefined values");
+  }
 
-    //network
-    WiFiManager wifiManager;
-    wifiManager.autoConnect(currentOptions.domain);
-    initOTA();
-    initMDNS();
-    initWebServer();
+  // network
+  WiFiManager wifiManager;
+  wifiManager.autoConnect(currentOptions.domain);
+  initOTA();
+  initMDNS();
+  initWebServer();
 
-    //strip
-    initLedStrip();
-    initAnimations();
-    initDefaultMode();
+  // strip
+  initLedStrip();
+  initAnimations();
+  initDefaultMode();
 }
 
 void loop() {
@@ -174,36 +169,30 @@ void loop() {
   } else {
     server->handleClient();
     if (animations->IsAnimating()) {
-        // the normal loop just needs these to run the active animations
-        animations->UpdateAnimations();
-        strip->Show();
+      // the normal loop just needs these to run the active animations
+      animations->UpdateAnimations();
+      strip->Show();
     }
     server->handleClient();
   }
 }
 
 void restart() {
-  WiFi.forceSleepBegin(); 
-  ESP.reset(); 
+  WiFi.forceSleepBegin();
+  ESP.reset();
 }
 
-void log(String message) {
-  Serial.println(message);
-}
+void log(String message) { Serial.println(message); }
 
-void log(char *message) {
-  Serial.println(message);
-}
+void log(const char *message) { Serial.println(message); }
 
 void initLedStrip() {
-  strip = new NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod>(currentOptions.pixelCount);
+  strip = new BufferedNeoPixelBus<NeoGrbFeature, Neo800KbpsMethod>(currentOptions.pixelCount);
   strip->Begin();
   strip->Show();
 }
 
-void initAnimations() {
-  animations = new NeoPixelAnimator(currentOptions.pixelCount + 1, NEO_CENTISECONDS);
-}
+void initAnimations() { animations = new NeoPixelAnimator(currentOptions.pixelCount + 1, NEO_CENTISECONDS); }
 
 void initOTA() {
   ArduinoOTA.setHostname(currentOptions.domain);
@@ -211,26 +200,24 @@ void initOTA() {
     if (ArduinoOTA.getCommand() == U_SPIFFS) {
       SPIFFS.end();
     }
-    setStripColors([](RgbColor color, uint16_t ledIndex, float progress) {
-      return YELLOW;
-    }, 0);
+    strip->loadBufferColors([](RgbColor color, uint16_t ledIndex, float progress) { return YELLOW; }, 0);
     strip->Show();
   });
   ArduinoOTA.onEnd([]() {
-    setStripColors([](RgbColor color, uint16_t ledIndex, float progress) {
-      return BLUE;
-    }, 0);
+    strip->loadBufferColors([](RgbColor color, uint16_t ledIndex, float progress) { return BLUE; }, 0);
     strip->Show();
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    float p = ((float) progress) / total;
-    setStripColors([](RgbColor color, uint16_t ledIndex, float p) {
-      if (ledIndex < currentOptions.pixelCount * p) {
-        return GREEN;
-      } else {
-        return YELLOW;
-      }
-    }, p);
+    float p = ((float)progress) / total;
+    strip->loadBufferColors(
+        [](RgbColor color, uint16_t ledIndex, float p) {
+          if (ledIndex < currentOptions.pixelCount * p) {
+            return GREEN;
+          } else {
+            return YELLOW;
+          }
+        },
+        p);
     strip->Show();
   });
 }
@@ -261,7 +248,7 @@ void initDefaultMode() {
   } else {
     DynamicJsonBuffer request;
     DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = loadJsonFromFS(&jsonBuffer, filepath, requestErrorHandler);
+    JsonObject &json = loadJsonFromFS(&jsonBuffer, filepath, requestErrorHandler);
     if (json != JsonObject::invalid() && updateModeFromJson(&currentMode, json, requestErrorHandler)) {
       generateColors();
       setLedStripAnimationMode(ANIMATION_MODE_NONE, currentMode.animationMode);
@@ -270,7 +257,7 @@ void initDefaultMode() {
 }
 
 void initDefaultColors() {
-  char* defaultColors[] = DEFAULT_COLORS;
+  const char *defaultColors[] = DEFAULT_COLORS;
   HtmlColor htmlColor;
 
   for (int i = 0; i < DEFAULT_COLORS_COUNT; i++) {
@@ -289,16 +276,16 @@ void setupUrlMappings() {
   server->on("/api/options", HTTP_POST, onOptionsPost);
   server->on("/api/options", HTTP_GET, onOptionsGet);
   server->on("/api/otaUpdate", onOtaUpdate);
-  server->onNotFound (handleNotFound);
+  server->onNotFound(handleNotFound);
 }
 
-bool requestErrorHandler(char* errorMessage) {
+bool requestErrorHandler(const char *errorMessage) {
   sendError(errorMessage, HTTP_CODE_WRONG_REQUEST);
   log(errorMessage);
   return false;
 }
 
-bool logErrorHandler(char* errorMessage) {
+bool logErrorHandler(const char *errorMessage) {
   log(errorMessage);
   return false;
 }
@@ -309,7 +296,7 @@ void onModePost() {
     return;
   }
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& request = jsonBuffer.parseObject(server->arg(ARG_JSON));
+  JsonObject &request = jsonBuffer.parseObject(server->arg(ARG_JSON));
   LedStripAnimationMode previousAnimationMode = currentMode.animationMode;
   if (updateModeFromJson(&currentMode, request, requestErrorHandler)) {
     setLedStripAnimationMode(previousAnimationMode, currentMode.animationMode);
@@ -319,13 +306,13 @@ void onModePost() {
 
 void onModeGet() {
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& response = jsonBuffer.createObject();
+  JsonObject &response = jsonBuffer.createObject();
   if (updateJsonFromMode(&currentMode, response, requestErrorHandler)) {
     sendJson(response, HTTP_CODE_OK);
   }
 }
 
-//Creates new config for given Index or overrides existing
+// Creates new config for given Index or overrides existing
 void onFilePost() {
   if (!server->hasArg(ARG_INDEX)) {
     sendError("Index argument not found", HTTP_CODE_WRONG_REQUEST);
@@ -335,10 +322,9 @@ void onFilePost() {
   char filePathBuf[32];
   String filepath = MODE_JSON_FILE_PATH(currentMode.index);
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& modeJson = jsonBuffer.createObject();
+  JsonObject &modeJson = jsonBuffer.createObject();
 
-  if (updateJsonFromMode(&currentMode, modeJson, requestErrorHandler) 
-      && saveJsonToFS(modeJson, filepath, requestErrorHandler)) {
+  if (updateJsonFromMode(&currentMode, modeJson, requestErrorHandler) && saveJsonToFS(modeJson, filepath, requestErrorHandler)) {
     sendJson(modeJson, HTTP_CODE_OK);
   }
 }
@@ -356,7 +342,7 @@ void onFileGet() {
   }
   DynamicJsonBuffer jsonBuffer;
 
-  JsonObject& json = loadJsonFromFS(&jsonBuffer, filepath, requestErrorHandler);
+  JsonObject &json = loadJsonFromFS(&jsonBuffer, filepath, requestErrorHandler);
   LedStripAnimationMode prevAnimationMode = currentMode.animationMode;
   if (json != JsonObject::invalid() && updateModeFromJson(&currentMode, json, requestErrorHandler)) {
     generateColors();
@@ -367,7 +353,7 @@ void onFileGet() {
 
 void onOptionsGet() {
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& response = jsonBuffer.createObject();
+  JsonObject &response = jsonBuffer.createObject();
   if (updateJsonFromOptions(&currentOptions, response, requestErrorHandler)) {
     sendJson(response, HTTP_CODE_OK);
   }
@@ -379,10 +365,9 @@ void onOptionsPost() {
     return;
   }
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& request = jsonBuffer.parseObject(server->arg(ARG_JSON));
-  if (updateOptionsFromJson(&currentOptions, request, requestErrorHandler) 
-      && updateJsonFromOptions(&currentOptions, request, requestErrorHandler)
-      && saveJsonToFS(request, OPTIONS_JSON_FILE_PATH, requestErrorHandler)) {
+  JsonObject &request = jsonBuffer.parseObject(server->arg(ARG_JSON));
+  if (updateOptionsFromJson(&currentOptions, request, requestErrorHandler) && updateJsonFromOptions(&currentOptions, request, requestErrorHandler) &&
+      saveJsonToFS(request, OPTIONS_JSON_FILE_PATH, requestErrorHandler)) {
     onOptionsGet();
     delay(1000);
     restart();
@@ -391,56 +376,62 @@ void onOptionsPost() {
 
 bool loadOptionsFromFS() {
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& json = loadJsonFromFS(&jsonBuffer, OPTIONS_JSON_FILE_PATH, logErrorHandler);
+  JsonObject &json = loadJsonFromFS(&jsonBuffer, OPTIONS_JSON_FILE_PATH, logErrorHandler);
   return json != JsonObject::invalid() && updateOptionsFromJson(&currentOptions, json, logErrorHandler);
 }
 
-bool saveJsonToFS(JsonObject& json, String path, ErrorCallbackFunctionType errorCallback) {
+bool saveJsonToFS(JsonObject &json, String path, ErrorCallbackFunctionType errorCallback) {
   File jsonFile = SPIFFS.open(path, "w");
   json.printTo(jsonFile);
   jsonFile.close();
   return true;
 }
 
-JsonObject& loadJsonFromFS(DynamicJsonBuffer *jsonBuffer, String path, ErrorCallbackFunctionType errorCallback) {
+JsonObject &loadJsonFromFS(DynamicJsonBuffer *jsonBuffer, String path, ErrorCallbackFunctionType errorCallback) {
   File jsonFile = SPIFFS.open(path, "r");
-  JsonObject& json = jsonBuffer->parseObject(jsonFile);
+  JsonObject &json = jsonBuffer->parseObject(jsonFile);
   jsonFile.close();
   return json;
 }
 
-bool updateModeFromJson(LedStripMode *mode, JsonObject& json, ErrorCallbackFunctionType errorCallback) {
+bool updateModeFromJson(LedStripMode *mode, JsonObject &json, ErrorCallbackFunctionType errorCallback) {
   if (json.containsKey(JSON_FIELD_DESCRIPTION)) {
     String description = json[JSON_FIELD_DESCRIPTION];
     description.toCharArray(mode->description, DESCRIPTION_SIZE);
   }
   if (json.containsKey(JSON_FIELD_COLOR_SELECTION_MODE)) {
-    if (!validateRange(json, JSON_FIELD_COLOR_SELECTION_MODE, 0, COLOR_SELECTION_MODE_COUNT - 1, errorCallback)) return false;
+    if (!validateRange(json, JSON_FIELD_COLOR_SELECTION_MODE, 0, COLOR_SELECTION_MODE_COUNT - 1, errorCallback))
+      return false;
     mode->colorSelectionMode = json[JSON_FIELD_COLOR_SELECTION_MODE];
   }
   if (json.containsKey(JSON_FIELD_ANIMATION_MODE)) {
-    if (!validateRange(json, JSON_FIELD_ANIMATION_MODE, 0, sizeof(activeAnimationModes) / sizeof(LedStripAnimationMode), errorCallback)) return false;
+    if (!validateRange(json, JSON_FIELD_ANIMATION_MODE, 0, sizeof(activeAnimationModes) / sizeof(LedStripAnimationMode), errorCallback))
+      return false;
     uint16_t animationModeId = json[JSON_FIELD_ANIMATION_MODE];
     mode->animationMode = activeAnimationModes[animationModeId];
   }
   if (json.containsKey(JSON_FIELD_ANIMATION_PROGRESS_MODE)) {
-    if (!validateRange(json, JSON_FIELD_ANIMATION_PROGRESS_MODE, 0, sizeof(activeAnimationProgressModes) 
-                        / sizeof(AnimationProgressModifierFunctionType), errorCallback)) return false;
+    if (!validateRange(json, JSON_FIELD_ANIMATION_PROGRESS_MODE, 0, sizeof(activeAnimationProgressModes) / sizeof(AnimationProgressModifierFunctionType),
+                       errorCallback))
+      return false;
     uint16_t animationProgressModeId = json[JSON_FIELD_ANIMATION_PROGRESS_MODE];
     mode->animationProgressMode = activeAnimationProgressModes[animationProgressModeId];
   }
   if (json.containsKey(JSON_FIELD_ANIMATION_SPEED)) {
-    if (!validateRange(json, JSON_FIELD_ANIMATION_SPEED, 0, 255, errorCallback)) return false;
+    if (!validateRange(json, JSON_FIELD_ANIMATION_SPEED, 0, 255, errorCallback))
+      return false;
     mode->animationSpeed = json[JSON_FIELD_ANIMATION_SPEED];
   }
   if (json.containsKey(JSON_FIELD_ANIMATION_INTENSITY)) {
-    if (!validateRange(json, JSON_FIELD_ANIMATION_INTENSITY, 0, 255, errorCallback)) return false;
+    if (!validateRange(json, JSON_FIELD_ANIMATION_INTENSITY, 0, 255, errorCallback))
+      return false;
     mode->animationIntensity = json[JSON_FIELD_ANIMATION_INTENSITY];
   }
   if (json.containsKey(JSON_FIELD_COLORS)) {
-    if (!json.is<JsonArray>(JSON_FIELD_COLORS) && !errorCallback("Json prop colors must be array")) return false;
+    if (!json.is<JsonArray>(JSON_FIELD_COLORS) && !errorCallback("Json prop colors must be array"))
+      return false;
     HtmlColor htmlColor;
-    JsonArray& colorsArray = (JsonArray&) json[JSON_FIELD_COLORS];
+    JsonArray &colorsArray = (JsonArray &)json[JSON_FIELD_COLORS];
     for (int i = 0; i < colorsArray.size(); i++) {
       String colorCode = colorsArray[i];
       htmlColor.Parse<HtmlColorNames>(colorCode);
@@ -452,9 +443,9 @@ bool updateModeFromJson(LedStripMode *mode, JsonObject& json, ErrorCallbackFunct
   return true;
 }
 
-bool updateJsonFromMode(LedStripMode *mode, JsonObject& json, ErrorCallbackFunctionType errorCallback) {
+bool updateJsonFromMode(LedStripMode *mode, JsonObject &json, ErrorCallbackFunctionType errorCallback) {
   char colorBuffer[HTML_COLOR_LENGTH];
-  JsonArray& colorsArray = json.createNestedArray(JSON_FIELD_COLORS);
+  JsonArray &colorsArray = json.createNestedArray(JSON_FIELD_COLORS);
   for (int i = 0; i < mode->colorsCount; i++) {
     HtmlColor htmlColor(mode->colors[i]);
     htmlColor.ToNumericalString(colorBuffer, HTML_COLOR_LENGTH);
@@ -470,7 +461,7 @@ bool updateJsonFromMode(LedStripMode *mode, JsonObject& json, ErrorCallbackFunct
   return true;
 }
 
-bool updateOptionsFromJson(WebStripOptions *options, JsonObject& json, ErrorCallbackFunctionType errorCallback) {
+bool updateOptionsFromJson(WebStripOptions *options, JsonObject &json, ErrorCallbackFunctionType errorCallback) {
   if (json.containsKey(JSON_FIELD_PIXEL_COUNT)) {
     options->pixelCount = json[JSON_FIELD_PIXEL_COUNT];
   }
@@ -484,7 +475,7 @@ bool updateOptionsFromJson(WebStripOptions *options, JsonObject& json, ErrorCall
   return true;
 }
 
-bool updateJsonFromOptions(WebStripOptions *options, JsonObject& json, ErrorCallbackFunctionType errorCallback) {
+bool updateJsonFromOptions(WebStripOptions *options, JsonObject &json, ErrorCallbackFunctionType errorCallback) {
   json[JSON_FIELD_PIXEL_COUNT] = options->pixelCount;
   json[JSON_FIELD_PORT] = options->port;
   json[JSON_FIELD_DOMAIN] = options->domain;
@@ -498,69 +489,22 @@ void onOtaUpdate() {
   server->send(HTTP_CODE_OK, "text/plain", "Waiting for OTA update");
 }
 
+RgbColor generateColor(uint16_t ledIndex) {
+  switch (currentMode.colorSelectionMode) {
+  case COLOR_SELECTION_MODE_RAND:
+    return currentMode.colors[random(currentMode.colorsCount)];
+  case COLOR_SELECTION_MODE_GENERATED:
+    return RgbColor(GENERATE_RANDOM_COLOR);
+  case COLOR_SELECTION_MODE_ASC:
+  default:
+    return currentMode.colors[ledIndex % currentMode.colorsCount];
+  }
+}
+
 void generateColors() {
   for (uint16_t ledIndex = 0; ledIndex < currentOptions.pixelCount; ledIndex++) {
     RgbColor color = generateColor(ledIndex);
-    setColor(ledIndex, color);
-  }
-}
-
-void setColor(uint16_t ledIndex, RgbColor color) {
-  stripColors[ledIndex] = color;
-}
-
-void setColor(RgbColor color) {
-  for (uint16_t ledIndex = 0; ledIndex < currentOptions.pixelCount; ledIndex++) {
-    setColor(ledIndex, color);
-  }
-}
-
-RgbColor getColor(uint16_t ledIndex) {
-  return stripColors[ledIndex];
-}
-
-void setStripColor(uint16_t ledIndex, RgbColor color) {
-  colorGamma.Correct(color);
-  strip->SetPixelColor(ledIndex, color);
-}
-
-RgbColor getStripColor(uint16_t ledIndex) {
-  return strip->GetPixelColor(ledIndex);
-}
-
-void setStripColors() {
-  setStripColors(NULL, 0);
-}
-
-void setStripColors(RgbColorModificatorFunctionType modificator, float progress) {
-  for (uint16_t ledIndex = 0; ledIndex < currentOptions.pixelCount; ledIndex++) {
-    RgbColor color = getColor(ledIndex);
-    if (modificator != NULL) {
-      color = modificator(color, ledIndex, progress);
-    }
-    setStripColor(ledIndex, color);
-  }
-}
-
-void setColors(RgbColorModificatorFunctionType modificator, float progress) {
-  for (uint16_t ledIndex = 0; ledIndex < currentOptions.pixelCount; ledIndex++) {
-    RgbColor color = getColor(ledIndex);
-    if (modificator != NULL) {
-      color = modificator(color, ledIndex, progress);
-    }
-    setColor(ledIndex, color);
-  }
-}
-
-RgbColor generateColor(uint16_t ledIndex) {
-  switch (currentMode.colorSelectionMode) {
-    case COLOR_SELECTION_MODE_RAND:
-      return currentMode.colors[random(currentMode.colorsCount)];
-    case COLOR_SELECTION_MODE_GENERATED: 
-      return RgbColor(GENERATE_RANDOM_COLOR);
-    case COLOR_SELECTION_MODE_ASC:
-    default:
-      return currentMode.colors[ledIndex % currentMode.colorsCount];
+    strip->setBufferColor(ledIndex, color);
   }
 }
 
@@ -568,36 +512,37 @@ RgbColor generateColor(uint16_t ledIndex) {
 //   return String("Key is") + key;
 // }
 
-void handleNotFound(){
+void handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server->uri();
   message += "\nMethod: ";
-  message += (server->method() == HTTP_GET)?"GET":"POST";
+  message += (server->method() == HTTP_GET) ? "GET" : "POST";
   message += "\nArguments: ";
   message += server->args();
   message += "\n";
-  for (uint8_t i=0; i<server->args(); i++){
+  for (uint8_t i = 0; i < server->args(); i++) {
     message += " " + server->argName(i) + ": " + server->arg(i) + "\n";
   }
   server->send(404, "text/plain", message);
 }
 
-void sendError(char* message, int httpCode) {
+void sendError(const char *message, int httpCode) {
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& response = jsonBuffer.createObject();
+  JsonObject &response = jsonBuffer.createObject();
   response["errorMessage"] = message;
   sendJson(response, httpCode);
 }
 
-void sendJson(JsonObject& json, const int httpCode) {
+void sendJson(JsonObject &json, const int httpCode) {
   char jsonCharBuffer[512];
   json.printTo(jsonCharBuffer);
   server->send(httpCode, MIME_JSON, jsonCharBuffer);
 }
 
 void handleRoot() {
-  // if (ESPTemplateProcessor(server).send(String("/index.html"), placeholderHandler)) {
+  // if (ESPTemplateProcessor(server).send(String("/index.html"),
+  // placeholderHandler)) {
   //   log("SUCCESS");
   // } else {
   //   log("FAIL");
@@ -619,27 +564,23 @@ unsigned int calcAnimationTime() {
   return animationTime > 0 ? animationTime : 1;
 }
 
-float calcProgress(const AnimationParam& param) {
-  return currentMode.animationProgressMode(param.progress);
-}
+float calcProgress(const AnimationParam &param) { return currentMode.animationProgressMode(param.progress); }
 
-void stopAllAnimations() {
-  animations->StopAll();
-}
+void stopAllAnimations() { animations->StopAll(); }
 
 void startNoneAnimation() {
   generateColors();
-  setStripColors();
+  strip->loadBufferColors();
   strip->Show();
 }
 
 void startShiftRightAnimation() {
   generateColors();
-  setStripColors();
+  strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateShiftRightAnimation);
 }
 
-void updateShiftRightAnimation(const AnimationParam& param) {
+void updateShiftRightAnimation(const AnimationParam &param) {
   if (param.state == AnimationState_Completed) {
     strip->RotateRight(currentMode.animationIntensity);
     animations->RestartAnimation(ANIMATION_INDEX_MAIN);
@@ -648,47 +589,47 @@ void updateShiftRightAnimation(const AnimationParam& param) {
 
 void startFadeAnimation() {
   generateColors();
-  setStripColors();
+  strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateFadeOutInAnimation);
 }
 
-void updateFadeOutInAnimation(const AnimationParam& param) {
+void updateFadeOutInAnimation(const AnimationParam &param) {
   float progress = calcProgress(param);
   RgbColor black(0);
-  setStripColors([](RgbColor color, uint16_t ledIndex, float progress){
-    if (progress < 0.5) {
-      return changeColorBrightness(color, 1 - progress * 2);
-    } else {
-      return changeColorBrightness(color, progress * 2 - 1);
-    }
-  }, progress);
+  strip->loadBufferColors(
+      [](RgbColor color, uint16_t ledIndex, float progress) -> RgbColor {
+        if (progress < 0.5) {
+          return changeColorBrightness(color, 1 - progress * 2);
+        } else {
+          return changeColorBrightness(color, progress * 2 - 1);
+        }
+      },
+      progress);
   if (param.state == AnimationState_Completed) {
     animations->RestartAnimation(ANIMATION_INDEX_MAIN);
   }
 }
 
-void updateLedColorChangeAnimation(const AnimationParam& param) {
+void updateLedColorChangeAnimation(const AnimationParam &param) {
   float progress = calcProgress(param);
   uint16_t ledIndex = param.index;
   RgbColor updatedColor;
   if (param.state == AnimationState_Completed) {
     updatedColor = ledColorAnimationState[ledIndex].endColor;
-    setColor(ledIndex, updatedColor);
+    strip->setBufferColor(ledIndex, updatedColor);
   } else {
-    updatedColor = RgbColor::LinearBlend(ledColorAnimationState[ledIndex].startColor, 
-                                                ledColorAnimationState[ledIndex].endColor, 
-                                                progress);
+    updatedColor = RgbColor::LinearBlend(ledColorAnimationState[ledIndex].startColor, ledColorAnimationState[ledIndex].endColor, progress);
   }
-  setStripColor(ledIndex, updatedColor);
+  strip->SetPixelColor(ledIndex, updatedColor);
 }
 
-void updateRandPixelsAnimation(const AnimationParam& param) {
+void updateRandPixelsAnimation(const AnimationParam &param) {
   if (param.state == AnimationState_Completed) {
     for (uint16_t i = 0; i < currentMode.animationIntensity; i++) {
       uint16_t ledIndex = random(currentOptions.pixelCount);
 
       if (!animations->IsAnimationActive(ledIndex)) {
-        ledColorAnimationState[ledIndex].startColor = getColor(ledIndex);
+        ledColorAnimationState[ledIndex].startColor = strip->getBufferColor(ledIndex);
         ledColorAnimationState[ledIndex].endColor = generateColor(ledIndex);
         animations->StartAnimation(ledIndex, calcAnimationTime() * 10, updateLedColorChangeAnimation);
       }
@@ -699,11 +640,11 @@ void updateRandPixelsAnimation(const AnimationParam& param) {
 
 void startRandPixelsAnimation() {
   generateColors();
-  setStripColors();
+  strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateRandPixelsAnimation);
 }
 
-void updateFlashPixelsAnimation(const AnimationParam& param) {
+void updateFlashPixelsAnimation(const AnimationParam &param) {
   if (param.state == AnimationState_Completed) {
     for (uint16_t i = 0; i < currentMode.animationIntensity; i++) {
       uint16_t ledIndex = random(currentOptions.pixelCount);
@@ -719,12 +660,12 @@ void updateFlashPixelsAnimation(const AnimationParam& param) {
 }
 
 void startFlashPixelsAnimation() {
-  setColor(BLACK);
-  setStripColors();
+  strip->clearBufferColor(BLACK);
+  strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateFlashPixelsAnimation);
 }
 
-void updateSolidFadeOutLoopAnimation(const AnimationParam& param) {
+void updateSolidFadeOutLoopAnimation(const AnimationParam &param) {
   if (param.state == AnimationState_Completed) {
     animations->RestartAnimation(ANIMATION_INDEX_MAIN);
   } else {
@@ -734,7 +675,7 @@ void updateSolidFadeOutLoopAnimation(const AnimationParam& param) {
     if (param.state == AnimationState_Started) {
       tempColor = generateColor(0);
     }
-  
+
     if (!animations->IsAnimationActive(ledIndex)) {
       ledColorAnimationState[ledIndex].startColor = tempColor;
       ledColorAnimationState[ledIndex].endColor = BLACK;
@@ -744,39 +685,37 @@ void updateSolidFadeOutLoopAnimation(const AnimationParam& param) {
 }
 
 void startSolidFadeOutLoopAnimation() {
-  setColor(BLACK);
-  setStripColors();
+  strip->clearBufferColor(BLACK);
+  strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateSolidFadeOutLoopAnimation);
 }
 
-RgbColor changeColorBrightness(RgbColor color, float brightness) {
-  return RgbColor::LinearBlend(color, BLACK, 1 - brightness);
-}
+RgbColor changeColorBrightness(RgbColor color, float brightness) { return RgbColor::LinearBlend(color, BLACK, 1 - brightness); }
 
 void SetRandomSeed() {
-    uint32_t seed;
-    seed = analogRead(0);
+  uint32_t seed;
+  seed = analogRead(0);
+  delay(1);
+  for (int shifts = 3; shifts < 31; shifts += 3) {
+    seed ^= analogRead(0) << shifts;
     delay(1);
-    for (int shifts = 3; shifts < 31; shifts += 3)
-    {
-        seed ^= analogRead(0) << shifts;
-        delay(1);
-    }
-    randomSeed(seed);
+  }
+  randomSeed(seed);
 }
 
 uint16_t getAnimationProgressModeIndex(AnimationProgressModifierFunctionType mode) {
   for (uint16_t i = 0; i < sizeof(activeAnimationProgressModes) / sizeof(AnimationProgressModifierFunctionType); i++) {
-    if (activeAnimationProgressModes[i] == mode) return i;
+    if (activeAnimationProgressModes[i] == mode)
+      return i;
   }
 }
 
-bool validateRange(JsonObject& json, char *fieldName, int min, int max, ErrorCallbackFunctionType errorCallback) {
+bool validateRange(JsonObject &json, const char *fieldName, int min, int max, ErrorCallbackFunctionType errorCallback) {
   int value = json[fieldName];
   char buf[128];
   if (value < min || value > max) {
-    String msg = String("Value '") + String(value) + String("' in field '") + String(fieldName) 
-               + String("' must be in range [") + String(min) + String(",") + String(max) + String("]");
+    String msg = String("Value '") + String(value) + String("' in field '") + String(fieldName) + String("' must be in range [") + String(min) + String(",") +
+                 String(max) + String("]");
     msg.toCharArray(buf, 128);
     return errorCallback(buf);
   }
