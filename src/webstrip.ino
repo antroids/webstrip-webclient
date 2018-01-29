@@ -527,6 +527,8 @@ void handleNotFound() {
   server->send(404, "text/plain", message);
 }
 
+void setupResponseHeaders() { server->sendHeader("Access-Control-Allow-Origin", "*"); }
+
 void sendError(const char *message, int httpCode) {
   DynamicJsonBuffer jsonBuffer;
   JsonObject &response = jsonBuffer.createObject();
@@ -537,6 +539,7 @@ void sendError(const char *message, int httpCode) {
 void sendJson(JsonObject &json, const int httpCode) {
   char jsonCharBuffer[512];
   json.printTo(jsonCharBuffer);
+  setupResponseHeaders();
   server->send(httpCode, MIME_JSON, jsonCharBuffer);
 }
 
