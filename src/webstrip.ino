@@ -11,11 +11,17 @@
 
 #define MODE_JSON_FILE_PATH(INDEX) (String("modes/mode") + String(INDEX) + String(".json"))
 #define OPTIONS_JSON_FILE_PATH "options.json"
+#define INDEX_HTML_FILE_PATH "index.html"
+#define INDEX_MIN_JS_GZ_FILE_PATH "index.min.js.gz"
 
 #define MIME_JSON "application/json"
+#define MIME_HTML "text/html"
+#define MIME_JS "text/javascript"
+#define MIME_CSS "text/css"
 #define HTTP_CODE_OK 200
 #define HTTP_CODE_WRONG_REQUEST 400
 #define HTTP_CODE_NOT_FOUND 404
+#define HTTP_CODE_SERVER_ERROR 500
 
 #define ARG_JSON "data"
 #define ARG_INDEX "index"
@@ -29,6 +35,7 @@
 #define JSON_FIELD_ANIMATION_SPEED "animationSpeed"
 #define JSON_FIELD_ANIMATION_PROGRESS_MODE "animationProgressMode"
 #define JSON_FIELD_ANIMATION_INTENSITY "animationIntensity"
+#define JSON_FIELD_ANIMATION_DIRECTION "animationDirection"
 
 #define JSON_FIELD_DOMAIN "domain"
 #define JSON_FIELD_DOMAIN_SIZE 32
@@ -42,7 +49,8 @@
 
 #define GENERATE_RANDOM_COLOR (HsbColor(((float)random(360)) / 360, 1, 0.5))
 
-#define MAX_PIXEL_COUNT 255
+#define MAX_PIXEL_COUNT 256
+#define MAX_PIXEL (MAX_PIXEL_COUNT - 1)
 
 #define DESCRIPTION_SIZE 32
 #define DESCRIPTION_DEFAULT "Default mode"
@@ -76,20 +84,22 @@ struct LedStripAnimationMode {
 };
 
 void startNoneAnimation();
-void startShiftRightAnimation();
+void startShiftAnimation();
 void startFadeAnimation();
 void startRandPixelsAnimation();
 void stopAllAnimations();
 void startFlashPixelsAnimation();
 void startSolidFadeOutLoopAnimation();
+void startFadeOutLoopAnimation();
 
 const LedStripAnimationMode ANIMATION_MODE_NONE = {0, 0, startNoneAnimation, NULL};
-const LedStripAnimationMode ANIMATION_MODE_SHIFT_RIGHT = {1, 200, startShiftRightAnimation, stopAllAnimations};
+const LedStripAnimationMode ANIMATION_MODE_SHIFT = {1, 200, startShiftAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_FADE = {2, 200, startFadeAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_RAND_PIXELS = {3, 10, startRandPixelsAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_FLASH_PIXELS = {4, 20, startFlashPixelsAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_SOLID_FADE_OUT_LOOP = {5, 500, startSolidFadeOutLoopAnimation, stopAllAnimations};
-const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE,        ANIMATION_MODE_SHIFT_RIGHT,  ANIMATION_MODE_FADE,
+const LedStripAnimationMode ANIMATION_MODE_FADE_OUT_LOOP = {6, 500, startFadeOutLoopAnimation, stopAllAnimations};
+const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE,        ANIMATION_MODE_SHIFT,  ANIMATION_MODE_FADE,
                                                       ANIMATION_MODE_RAND_PIXELS, ANIMATION_MODE_FLASH_PIXELS, ANIMATION_MODE_SOLID_FADE_OUT_LOOP};
 
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_LINEAR = [](float progress) { return progress; };
@@ -113,6 +123,7 @@ struct LedStripMode {
   uint16_t animationSpeed = 50;
   AnimationProgressModifierFunctionType animationProgressMode = ANIMATION_PROGRESS_LINEAR;
   uint16_t animationIntensity = 1;
+  bool animationDirection = true;
   RgbColor colors[32];
 };
 
@@ -268,7 +279,8 @@ void initDefaultColors() {
 }
 
 void setupUrlMappings() {
-  server->on("/", handleRoot);
+  server->on("/", onRoot);
+  server->on("/index.min.js.gz", onIndexMinJsGz);
   server->on("/api/mode", HTTP_POST, onModePost);
   server->on("/api/mode", HTTP_GET, onModeGet);
   server->on("/api/file", HTTP_POST, onFilePost);
@@ -288,6 +300,24 @@ bool requestErrorHandler(const char *errorMessage) {
 bool logErrorHandler(const char *errorMessage) {
   log(errorMessage);
   return false;
+}
+
+void onRoot() {
+  if (!SPIFFS.exists(INDEX_HTML_FILE_PATH)) {
+    sendError("File not found on server!", HTTP_CODE_SERVER_ERROR);
+  }
+  File file = SPIFFS.open(INDEX_HTML_FILE_PATH, "r");
+  server->streamFile(file, MIME_HTML);
+  file.close();
+}
+
+void onIndexMinJsGz() {
+  if (!SPIFFS.exists(INDEX_MIN_JS_GZ_FILE_PATH)) {
+    sendError("File not found on server!", HTTP_CODE_SERVER_ERROR);
+  }
+  File file = SPIFFS.open(INDEX_MIN_JS_GZ_FILE_PATH, "r");
+  server->streamFile(file, MIME_JS);
+  file.close();
 }
 
 void onModePost() {
@@ -427,6 +457,9 @@ bool updateModeFromJson(LedStripMode *mode, JsonObject &json, ErrorCallbackFunct
       return false;
     mode->animationIntensity = json[JSON_FIELD_ANIMATION_INTENSITY];
   }
+  if (json.containsKey(JSON_FIELD_ANIMATION_DIRECTION)) {
+    mode->animationDirection = json[JSON_FIELD_ANIMATION_DIRECTION];
+  }
   if (json.containsKey(JSON_FIELD_COLORS)) {
     if (!json.is<JsonArray>(JSON_FIELD_COLORS) && !errorCallback("Json prop colors must be array"))
       return false;
@@ -457,6 +490,7 @@ bool updateJsonFromMode(LedStripMode *mode, JsonObject &json, ErrorCallbackFunct
   json[JSON_FIELD_ANIMATION_MODE] = mode->animationMode.id;
   json[JSON_FIELD_ANIMATION_SPEED] = mode->animationSpeed;
   json[JSON_FIELD_ANIMATION_INTENSITY] = mode->animationIntensity;
+  json[JSON_FIELD_ANIMATION_DIRECTION] = mode->animationDirection;
   json[JSON_FIELD_ANIMATION_PROGRESS_MODE] = getAnimationProgressModeIndex(mode->animationProgressMode);
   return true;
 }
@@ -577,15 +611,19 @@ void startNoneAnimation() {
   strip->Show();
 }
 
-void startShiftRightAnimation() {
+void startShiftAnimation() {
   generateColors();
   strip->loadBufferColors();
-  animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateShiftRightAnimation);
+  animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateShiftAnimation);
 }
 
-void updateShiftRightAnimation(const AnimationParam &param) {
+void updateShiftAnimation(const AnimationParam &param) {
   if (param.state == AnimationState_Completed) {
-    strip->RotateRight(currentMode.animationIntensity);
+    if (currentMode.animationDirection) {
+      strip->RotateRight(currentMode.animationIntensity);
+    } else {
+      strip->RotateLeft(currentMode.animationIntensity);
+    }
     animations->RestartAnimation(ANIMATION_INDEX_MAIN);
   }
 }
@@ -674,6 +712,7 @@ void updateSolidFadeOutLoopAnimation(const AnimationParam &param) {
   } else {
     float progress = calcProgress(param);
     uint16_t ledIndex = currentOptions.pixelCount * progress;
+    ledIndex = currentMode.animationDirection ? ledIndex : MAX_PIXEL - ledIndex;
 
     if (param.state == AnimationState_Started) {
       tempColor = generateColor(0);
@@ -691,6 +730,28 @@ void startSolidFadeOutLoopAnimation() {
   strip->clearBufferColor(BLACK);
   strip->loadBufferColors();
   animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateSolidFadeOutLoopAnimation);
+}
+
+void updateFadeOutLoopAnimation(const AnimationParam &param) {
+  if (param.state == AnimationState_Completed) {
+    animations->RestartAnimation(ANIMATION_INDEX_MAIN);
+  } else {
+    float progress = calcProgress(param);
+    uint16_t ledIndex = currentOptions.pixelCount * progress;
+    ledIndex = currentMode.animationDirection ? ledIndex : MAX_PIXEL - ledIndex;
+
+    if (!animations->IsAnimationActive(ledIndex)) {
+      ledColorAnimationState[ledIndex].startColor = generateColor(ledIndex);
+      ledColorAnimationState[ledIndex].endColor = BLACK;
+      animations->StartAnimation(ledIndex, calcAnimationTime() / 10, updateLedColorChangeAnimation);
+    }
+  }
+}
+
+void startFadeOutLoopAnimation() {
+  strip->clearBufferColor(BLACK);
+  strip->loadBufferColors();
+  animations->StartAnimation(ANIMATION_INDEX_MAIN, calcAnimationTime(), updateFadeOutLoopAnimation);
 }
 
 RgbColor changeColorBrightness(RgbColor color, float brightness) { return RgbColor::LinearBlend(color, BLACK, 1 - brightness); }

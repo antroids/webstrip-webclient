@@ -1,0 +1,35 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "change-extension-plugin": "^1.1.2",
+    "offline-plugin": "^4.9.0",
+    "react": "^16.2.0",
+    "react-dom": "^16.2.0",
+    "react-scripts": "1.1.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --env=jsdom",
+    "eject": "react-scripts eject",
+    "build-dev": "NODE_ENV=development webpack --progress",
+    "build-prod": "NODE_ENV=production webpack --progress"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.0",
+    "babel-loader": "^7.1.2",
+    "babel-preset-es2015": "^6.24.1",
+    "babel-preset-react": "^6.24.1",
+    "compression-webpack-plugin": "^1.1.3",
+    "cross-env": "^5.1.3",
+    "extract-text-webpack-plugin": "^3.0.2",
+    "jshint": "^2.9.5",
+    "jshint-loader": "^0.8.4",
+    "node-libs-browser": "^2.1.0",
+    "webpack": "^3.10.0",
+    "webpack-config": "^7.5.0",
+    "webpack-config-utils": "^2.3.0"
+  }
+}
