@@ -4,7 +4,9 @@
   "private": true,
   "dependencies": {
     "change-extension-plugin": "^1.1.2",
+    "immutability-helper": "^2.6.4",
     "offline-plugin": "^4.9.0",
+    "rc-slider": "^8.6.0",
     "react": "^16.2.0",
     "react-dom": "^16.2.0",
     "react-scripts": "1.1.0"

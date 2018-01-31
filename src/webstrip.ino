@@ -9,10 +9,10 @@
 #include <NeoPixelAnimator.h>
 #include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 
-#define MODE_JSON_FILE_PATH(INDEX) (String("modes/mode") + String(INDEX) + String(".json"))
-#define OPTIONS_JSON_FILE_PATH "options.json"
-#define INDEX_HTML_FILE_PATH "index.html"
-#define INDEX_MIN_JS_GZ_FILE_PATH "index.min.js.gz"
+#define MODE_JSON_FILE_PATH(INDEX) (String("/modes/mode") + String(INDEX) + String(".json"))
+#define OPTIONS_JSON_FILE_PATH "/web/options.json"
+#define INDEX_HTML_FILE_PATH "/web/index.html"
+#define INDEX_MIN_JS_GZ_FILE_PATH "/web/index.min.js.gz"
 
 #define MIME_JSON "application/json"
 #define MIME_HTML "text/html"
@@ -43,7 +43,7 @@
 #define JSON_FIELD_PORT "port"
 
 #define DEFAULT_COLORS                                                                                                                                         \
-  { "#9400D3", "#4B0082", "#0000FF", "#00FF00", "#FFFF00", "#FF7F00", "#FF0000" }
+  { "#9400D3", "#0000FF", "#00FFFF", "#00FF00", "#FFFF00", "#FF7F00", "#FF0000" }
 #define DEFAULT_COLORS_COUNT 7
 #define DEFAULT_MODE_INDEX 0
 
@@ -99,8 +99,13 @@ const LedStripAnimationMode ANIMATION_MODE_RAND_PIXELS = {3, 10, startRandPixels
 const LedStripAnimationMode ANIMATION_MODE_FLASH_PIXELS = {4, 20, startFlashPixelsAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_SOLID_FADE_OUT_LOOP = {5, 500, startSolidFadeOutLoopAnimation, stopAllAnimations};
 const LedStripAnimationMode ANIMATION_MODE_FADE_OUT_LOOP = {6, 500, startFadeOutLoopAnimation, stopAllAnimations};
-const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE,        ANIMATION_MODE_SHIFT,  ANIMATION_MODE_FADE,
-                                                      ANIMATION_MODE_RAND_PIXELS, ANIMATION_MODE_FLASH_PIXELS, ANIMATION_MODE_SOLID_FADE_OUT_LOOP};
+const LedStripAnimationMode activeAnimationModes[] = {ANIMATION_MODE_NONE,
+                                                      ANIMATION_MODE_SHIFT,
+                                                      ANIMATION_MODE_FADE,
+                                                      ANIMATION_MODE_RAND_PIXELS,
+                                                      ANIMATION_MODE_FLASH_PIXELS,
+                                                      ANIMATION_MODE_SOLID_FADE_OUT_LOOP,
+                                                      ANIMATION_MODE_FADE_OUT_LOOP};
 
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_LINEAR = [](float progress) { return progress; };
 const AnimationProgressModifierFunctionType ANIMATION_PROGRESS_SIN_IN = NeoEase::SinusoidalIn;
@@ -156,6 +161,15 @@ void setup() {
   Serial.begin(115200);
   SetRandomSeed();
   SPIFFS.begin();
+  //Print root dir content
+
+  Dir dir = SPIFFS.openDir("/web/");
+  Serial.println("");
+  while (dir.next()) {
+      Serial.print(dir.fileName());
+      File f = dir.openFile("r");
+      Serial.println(f.size());
+  }
   if (!loadOptionsFromFS()) {
     log("Cannot load options from file, using predefined values");
   }
@@ -712,7 +726,7 @@ void updateSolidFadeOutLoopAnimation(const AnimationParam &param) {
   } else {
     float progress = calcProgress(param);
     uint16_t ledIndex = currentOptions.pixelCount * progress;
-    ledIndex = currentMode.animationDirection ? ledIndex : MAX_PIXEL - ledIndex;
+    ledIndex = currentMode.animationDirection ? ledIndex : currentOptions.pixelCount - ledIndex;
 
     if (param.state == AnimationState_Started) {
       tempColor = generateColor(0);
@@ -738,7 +752,7 @@ void updateFadeOutLoopAnimation(const AnimationParam &param) {
   } else {
     float progress = calcProgress(param);
     uint16_t ledIndex = currentOptions.pixelCount * progress;
-    ledIndex = currentMode.animationDirection ? ledIndex : MAX_PIXEL - ledIndex;
+    ledIndex = currentMode.animationDirection ? ledIndex : currentOptions.pixelCount - ledIndex;
 
     if (!animations->IsAnimationActive(ledIndex)) {
       ledColorAnimationState[ledIndex].startColor = generateColor(ledIndex);

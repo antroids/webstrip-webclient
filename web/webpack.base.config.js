@@ -4,7 +4,7 @@ import HtmlWebpackPlugin from 'html-webpack-plugin';
 export default new Config().merge({
     entry: './src/index.js',
     output: {
-        path: __dirname + '/../data',
+        path: __dirname + '/../data/web/',
     },
     module: {
         loaders: [
