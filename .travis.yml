@@ -10,6 +10,9 @@ install:
 script:
 - npm run build
 - mkdir upload
+- mkdir upload/static
+- mkdir upload/static/js
+- mkdir upload/static/css
 - cp build/index.html upload/index.html
 - cp build/static/js/main.js.gz upload/static/js/main.js.gz
 - cp build/static/css/main.css.gz upload/static/css/main.css.gz
