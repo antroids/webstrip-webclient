@@ -1,12 +1,25 @@
 language: node_js
 sudo: false
 node_js:
-  - "7"
+- '7'
 cache:
   directories:
-    - "node_modules"
-
+  - node_modules
 install:
-  - npm install
+- npm install
 script:
-  - npm run build
+- npm run build
+- mkdir upload
+- cp build/index.html upload/index.html
+- cp build/static/js/main.js.gz
+- cp build/static/css/main.css.gz
+deploy:
+  file_glob: true
+  skip_cleanup: true
+  provider: s3
+  access_key_id:
+    - secure: plHC7sNDG8+ON4iRk49HMKcbrbwOXYJ6FRCF6LgTsZoAUPnyzxyPSg+PvFvjAHq9FTxN6RetajshPRceS2m1dbSQi2VjFKrrX3CJsuMr70kUD68ExAKzUnM1BhjL7q3G5nlpS4pVDkIRU3gTEQNVNsPjoIWsDqEtW+CXA73HMeZQduClByIMa7JSJmZf67mVMQQdG90VHJJVCE9I8UDqNR6riEYxvctjAzcEstRohc1ndyvvBSWyLCsvYJu+ivf2XFPEf67WTK7Bg2DWs9U4srw7+PZNYocw+9UwdGMwRBSIqTkWMuIw5yfpo2MIOYTVw6U8VDLvxm4QF8VqFc0geaZebp1u5AJbte1dnGwfEMsw65Zk7CPBLUaff1rTCOZZCFJkbS7wi1J7Oh9Ua8X8QF16qe0wwgH8C98o2RdByrulcng9YX+3Px9dMIKj0ENHZ9RvKy3H87hzUGQ8opLlTOTcImkMk4iwxPu7v6+ew3mmiYo+4y+lLEy25eUKY/L8VwGX0h8RgqBGxgIvViGWnbOoaeduhgRnrlHTUTCObrHXHXFlJpl5RRZFJqZ4wZyBMgOk4vlEPP9Lh88+mWcB1CQnBPvUBFpI2WElA+nsaak8Q5KRVR3EpFOWA+7xzxzoiEbNNFf5uLk3cjLvYFBcTiE7aq+bwDzBsiAS3vUJGnM=
+  secret_access_key:
+    - secure: B8AxxkpukBn9tZUMz9VuJgDQkwMxsSHa2XDzoHlfiXa94Key3s6HCS1v4M2fmuU/Mzjf8AycdIEqvvT6Dr6irxldLSqGRqWQwk/7wQHvmZV9RzWhp7F/kJ85wyaCnNJjBW0CBAJOQJ2Omg3qTckJfAtX7fXdVnQ90Nb/BwdvVM++9aCpO5mSsD8HZY/T42IhzorslMC7StC7s/3lh8HcOhEJtaPj6qR3Y7A2Yc/H/bOCBwOGgYZugKfZGn5toroclbuEu7nMRQPbOVkycAUe9d2N9w8o8V/h5d3VpoYghc58e8NH3EiOiUedFczK1yhr3wbO7JKwWrcItssjgpHgSQXC+MqZySRiF9OY6j0fxq4dlZlfqztFP7wHDNlGxZot5yzB/vo1d0ku0LTvvs6qo/vsrbES3RgBT1vbpzC0ExNq1rsG7ew7xV31E1d/9VZXmQ2TykdT/6UR2BxZJOmcqnz4nRISpZewJA6hxa66reY7w73guN8z56cLRxdh6BtY9MCYOgGO9fMFKDPaFf4kDS57SEbajrK/6wIXTloV8gO67Lui54BN53sk7tFhh/9lzmVN24jGBLPUD11eqR6GBSL/aYWeGZaUie+4snCp+HIUbF08H8eIQECn9KI8O03PPQQOv2w3zHnvZwPzBoyDkIyiJaNYMec7fBo6Czhhyv8=
+  bucket: antroids-webstrip
+  upload-dir: upload
