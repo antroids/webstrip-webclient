@@ -17,7 +17,6 @@ script:
 - cp build/static/js/main.js.gz upload/static/js/main.js.gz
 - cp build/static/css/main.css.gz upload/static/css/main.css.gz
 deploy:
-  file_glob: true
   skip_cleanup: true
   provider: s3
   bucket: antroids-webstrip
