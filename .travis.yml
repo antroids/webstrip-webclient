@@ -16,6 +16,7 @@ script:
 - cp build/index.html upload/index.html
 - cp build/static/js/main.js.gz upload/static/js/main.js.gz
 - cp build/static/css/main.css.gz upload/static/css/main.css.gz
+- echo "{'availableVersion':'$TRAVIS_BUILD_NUMBER'}" > upload/webclient.json
 deploy:
   skip_cleanup: true
   provider: s3
