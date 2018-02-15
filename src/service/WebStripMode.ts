@@ -1,13 +1,15 @@
 export enum COLOR_SELECTION_MODE {
     ASC,
     RAND,
-    GENERATED
+    GENERATED,
+    ASC_PALETTE_STRETCH
 }
 
 export const COLOR_SELECTION_MODES_CONFIG = {
     [COLOR_SELECTION_MODE.ASC]: 'Repeat all colors from palette',
     [COLOR_SELECTION_MODE.RAND]: 'Random colors from palette',
-    [COLOR_SELECTION_MODE.GENERATED]: 'Random colors'
+    [COLOR_SELECTION_MODE.GENERATED]: 'Random colors',
+    [COLOR_SELECTION_MODE.ASC_PALETTE_STRETCH]: 'All colors from palette stretched'
 };
 
 export enum ANIMATION_MODE {
@@ -17,7 +19,9 @@ export enum ANIMATION_MODE {
     RAND_PIXELS,
     FLASH_PIXELS,
     SOLID_FADE_OUT_LOOP,
-    FADE_OUT_LOOP
+    FADE_OUT_LOOP,
+    SOLID_EXPLOSIONS,
+    EXPLOSIONS
 }
 
 export const ANIMATION_MODES_CONFIG = {
@@ -27,7 +31,9 @@ export const ANIMATION_MODES_CONFIG = {
     [ANIMATION_MODE.RAND_PIXELS]: 'Change random pixels',
     [ANIMATION_MODE.FLASH_PIXELS]: 'Flash random pixels, then fade out',
     [ANIMATION_MODE.SOLID_FADE_OUT_LOOP]: 'Move solid color pixel with tail',
-    [ANIMATION_MODE.FADE_OUT_LOOP]: 'Move color pixel with tail'
+    [ANIMATION_MODE.FADE_OUT_LOOP]: 'Move color pixel with tail',
+    [ANIMATION_MODE.SOLID_EXPLOSIONS]: 'Solid explosions',
+    [ANIMATION_MODE.EXPLOSIONS]: 'Color explosions'
 };
 
 export enum ANIMATION_PROGRESS_MODE {
@@ -53,5 +59,7 @@ export interface WebStripMode {
     animationProgressMode: ANIMATION_PROGRESS_MODE;
     animationIntensity: number;
     animationDirection: boolean;
+    nextMode: number;
+    nextModeDelay: number;
     colors: string[];
 }

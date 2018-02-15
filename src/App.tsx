@@ -28,6 +28,8 @@ class App extends React.Component<any, WebStripMode> {
             animationProgressMode: ANIMATION_PROGRESS_MODE.LINEAR,
             animationIntensity: 128,
             animationDirection: true,
+            nextMode: 0,
+            nextModeDelay: 0,
             colors: [],
             colorSelectionMode: COLOR_SELECTION_MODE.ASC
         };
